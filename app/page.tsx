@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Send,
   Settings,
@@ -15,6 +16,8 @@ import {
   Search,
   Code,
   Globe,
+  Menu,
+  X,
 } from "lucide-react";
 
 const CONVERSATIONS_STORAGE_KEY = "groq_chat_conversations";
@@ -22,8 +25,6 @@ const CURRENT_CHAT_STORAGE_KEY = "groq_chat_current_chat_id";
 const DARK_MODE_STORAGE_KEY = "groq_chat_dark_mode";
 const ACTIVE_TOOLS_STORAGE_KEY = "groq_chat_active_tools";
 
-// Old key from previous version.
-// This is only for migration, so your previous saved chat is not lost.
 const OLD_CHAT_STORAGE_KEY = "groq_chat_messages";
 
 type ChatMessage = {
@@ -49,23 +50,14 @@ export default function ChatInterface() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  /**
-   * ------------------------
-   * CREATE CHAT ID
-   * ------------------------
-   */
   const createChatId = () => {
     return `chat_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   };
 
-  /**
-   * ------------------------
-   * CREATE CHAT TITLE
-   * ------------------------
-   */
   const createChatTitle = (chatMessages: ChatMessage[]) => {
     const firstUserMessage = chatMessages.find((msg) => msg.role === "user");
 
@@ -78,11 +70,6 @@ export default function ChatInterface() {
       : firstUserMessage.content;
   };
 
-  /**
-   * ------------------------
-   * LOAD DATA FROM LOCALSTORAGE
-   * ------------------------
-   */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -155,11 +142,6 @@ export default function ChatInterface() {
     }
   }, []);
 
-  /**
-   * ------------------------
-   * SAVE CONVERSATIONS TO LOCALSTORAGE
-   * ------------------------
-   */
   useEffect(() => {
     if (!hydrated) return;
 
@@ -169,11 +151,6 @@ export default function ChatInterface() {
     );
   }, [conversations, hydrated]);
 
-  /**
-   * ------------------------
-   * SAVE CURRENT CHAT ID TO LOCALSTORAGE
-   * ------------------------
-   */
   useEffect(() => {
     if (!hydrated) return;
 
@@ -184,55 +161,30 @@ export default function ChatInterface() {
     }
   }, [currentChatId, hydrated]);
 
-  /**
-   * ------------------------
-   * SAVE DARK MODE TO LOCALSTORAGE
-   * ------------------------
-   */
   useEffect(() => {
     if (!hydrated) return;
 
     localStorage.setItem(DARK_MODE_STORAGE_KEY, JSON.stringify(darkMode));
   }, [darkMode, hydrated]);
 
-  /**
-   * ------------------------
-   * SAVE ACTIVE TOOLS TO LOCALSTORAGE
-   * ------------------------
-   */
   useEffect(() => {
     if (!hydrated) return;
 
     localStorage.setItem(ACTIVE_TOOLS_STORAGE_KEY, JSON.stringify(activeTools));
   }, [activeTools, hydrated]);
 
-  /**
-   * ------------------------
-   * THEME
-   * ------------------------
-   */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
 
-  /**
-   * ------------------------
-   * AUTO SCROLL
-   * ------------------------
-   */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
       behavior: "smooth",
     });
   }, [messages, loading]);
 
-  /**
-   * ------------------------
-   * SAVE / UPDATE ONE CONVERSATION
-   * ------------------------
-   */
   const saveConversation = (
     chatMessages: ChatMessage[],
     existingChatId?: string | null,
@@ -276,46 +228,28 @@ export default function ChatInterface() {
     return chatId;
   };
 
-  /**
-   * ------------------------
-   * TOGGLE TOOL
-   * ------------------------
-   */
   const toggleTool = (tool: string) => {
     setActiveTools((prev) =>
       prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool],
     );
   };
 
-  /**
-   * ------------------------
-   * NEW CHAT
-   * ------------------------
-   */
   const startNewChat = () => {
     setMessages([]);
     setCurrentChatId(null);
     setMessage("");
+    setMobileSidebarOpen(false);
   };
 
-  /**
-   * ------------------------
-   * OPEN OLD CHAT
-   * ------------------------
-   */
   const openConversation = (chat: Conversation) => {
     if (loading) return;
 
     setCurrentChatId(chat.id);
     setMessages(chat.messages);
     setMessage("");
+    setMobileSidebarOpen(false);
   };
 
-  /**
-   * ------------------------
-   * SEND MESSAGE
-   * ------------------------
-   */
   const sendMessage = async () => {
     if (!message.trim() || loading) return;
 
@@ -381,11 +315,6 @@ export default function ChatInterface() {
     }
   };
 
-  /**
-   * ------------------------
-   * ENTER SEND
-   * ------------------------
-   */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -394,76 +323,144 @@ export default function ChatInterface() {
     }
   };
 
+  const SidebarContent = () => (
+    <>
+      <div className="p-4">
+        <button
+          onClick={startNewChat}
+          className="flex w-full items-center justify-between rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Plus size={16} />
+            New Chat
+          </div>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 space-y-1">
+        <p className="px-2 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+          History
+        </p>
+
+        {conversations.length === 0 ? (
+          <div className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400">
+            <MessageSquare size={16} />
+
+            <span className="truncate">No conversations yet</span>
+          </div>
+        ) : (
+          conversations.map((chat) => (
+            <div
+              key={chat.id}
+              onClick={() => openConversation(chat)}
+              className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400 ${currentChatId === chat.id
+                  ? "bg-zinc-200 dark:bg-zinc-800"
+                  : ""
+                }`}
+            >
+              <MessageSquare size={16} />
+
+              <span className="truncate">{chat.title}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-screen w-full bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans transition-colors duration-300">
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex w-64 flex-col bg-zinc-100 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
-        <div className="p-4">
-          <button
-            onClick={startNewChat}
-            className="flex w-full items-center justify-between rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Plus size={16} />
-              New Chat
-            </div>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-3 space-y-1">
-          <p className="px-2 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-            History
-          </p>
-
-          {conversations.length === 0 ? (
-            <div className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400">
-              <MessageSquare size={16} />
-
-              <span className="truncate">No conversations yet</span>
-            </div>
-          ) : (
-            conversations.map((chat) => (
-              <div
-                key={chat.id}
-                onClick={() => openConversation(chat)}
-                className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400"
-              >
-                <MessageSquare size={16} />
-
-                <span className="truncate">{chat.title}</span>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Bottom Sidebar Actions */}
-        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-          <button
-            onClick={() => setDarkMode((prev) => !prev)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-          >
-            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-
-            {darkMode ? "Light Mode" : "Dark Mode"}
-          </button>
-        </div>
+        <SidebarContent />
       </aside>
 
-      {/* Main Chat Area */}
-      <main className="flex flex-1 flex-col relative h-full">
-        {/* Header */}
-        <header className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md px-6 py-3 sticky top-0 z-10">
-          <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
-              <span className="font-bold text-lg">{selectedModel}</span>
+      {/* Sidebar - Mobile Animated Overlay */}
+      <AnimatePresence>
+        {mobileSidebarOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <motion.div
+              onClick={() => setMobileSidebarOpen(false)}
+              className="absolute inset-0 bg-black/40"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
 
-              <ChevronDown size={16} className="text-zinc-500" />
+            <motion.aside
+              className="relative z-10 flex h-full w-72 max-w-[85%] flex-col bg-zinc-100 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 shadow-xl"
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              transition={{
+                type: "spring",
+                stiffness: 280,
+                damping: 30,
+              }}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+                <span className="font-semibold text-sm">Chat History</span>
+
+                <button
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className="p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <SidebarContent />
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Chat Area */}
+      <main className="flex flex-1 flex-col relative h-full min-w-0">
+        {/* Header */}
+        <header className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md px-3 sm:px-6 py-3 sticky top-0 z-10">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="md:hidden p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+            >
+              <Menu size={20} className="text-zinc-500" />
             </button>
+
+            <div className="relative group min-w-0">
+              <button className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                <span className="font-bold text-base sm:text-lg truncate">
+                  {selectedModel}
+                </span>
+
+                <ChevronDown size={16} className="text-zinc-500 shrink-0" />
+              </button>
+            </div>
           </div>
 
-          <button className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
-            <Settings size={20} className="text-zinc-500" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDarkMode((prev) => !prev)}
+              className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {darkMode ? (
+                <Sun size={20} className="text-zinc-500" />
+              ) : (
+                <Moon size={20} className="text-zinc-500" />
+              )}
+            </button>
+
+            <button className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+              <Settings size={20} className="text-zinc-500" />
+            </button>
+          </div>
         </header>
 
         {/* MESSAGE AREA */}
@@ -486,8 +483,8 @@ export default function ChatInterface() {
                 >
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed shadow-sm ${msg.role === "user"
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black"
-                      : "bg-zinc-200 dark:bg-zinc-800"
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black"
+                        : "bg-zinc-200 dark:bg-zinc-800"
                       }`}
                   >
                     {msg.content}
@@ -567,11 +564,6 @@ export default function ChatInterface() {
   );
 }
 
-/**
- * ------------------------
- * TOOL CHIP
- * ------------------------
- */
 function ToolChip({
   icon,
   label,
@@ -587,8 +579,8 @@ function ToolChip({
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${active
-        ? "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
-        : "bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
+          ? "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
+          : "bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
         }`}
     >
       {icon}

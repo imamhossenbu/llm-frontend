@@ -17,16 +17,194 @@ import {
   Globe,
 } from "lucide-react";
 
+const CONVERSATIONS_STORAGE_KEY = "groq_chat_conversations";
+const CURRENT_CHAT_STORAGE_KEY = "groq_chat_current_chat_id";
+const DARK_MODE_STORAGE_KEY = "groq_chat_dark_mode";
+const ACTIVE_TOOLS_STORAGE_KEY = "groq_chat_active_tools";
+
+// Old key from previous version.
+// This is only for migration, so your previous saved chat is not lost.
+const OLD_CHAT_STORAGE_KEY = "groq_chat_messages";
+
+type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
+type Conversation = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+};
 
 export default function ChatInterface() {
   const [message, setMessage] = useState("");
-  const [selectedModel] = useState("Groq AI");
+  const [selectedModel] = useState("ChatBot");
   const [darkMode, setDarkMode] = useState(true);
   const [activeTools, setActiveTools] = useState<string[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * ------------------------
+   * CREATE CHAT ID
+   * ------------------------
+   */
+  const createChatId = () => {
+    return `chat_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  };
+
+  /**
+   * ------------------------
+   * CREATE CHAT TITLE
+   * ------------------------
+   */
+  const createChatTitle = (chatMessages: ChatMessage[]) => {
+    const firstUserMessage = chatMessages.find((msg) => msg.role === "user");
+
+    if (!firstUserMessage?.content) {
+      return "New Chat";
+    }
+
+    return firstUserMessage.content.length > 35
+      ? `${firstUserMessage.content.slice(0, 35)}...`
+      : firstUserMessage.content;
+  };
+
+  /**
+   * ------------------------
+   * LOAD DATA FROM LOCALSTORAGE
+   * ------------------------
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const savedConversations = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
+      const savedCurrentChatId = localStorage.getItem(CURRENT_CHAT_STORAGE_KEY);
+      const savedDarkMode = localStorage.getItem(DARK_MODE_STORAGE_KEY);
+      const savedTools = localStorage.getItem(ACTIVE_TOOLS_STORAGE_KEY);
+
+      if (savedConversations) {
+        const parsedConversations = JSON.parse(savedConversations);
+
+        if (Array.isArray(parsedConversations)) {
+          setConversations(parsedConversations);
+
+          const activeConversation = parsedConversations.find(
+            (chat: Conversation) => chat.id === savedCurrentChatId,
+          );
+
+          if (activeConversation) {
+            setCurrentChatId(activeConversation.id);
+            setMessages(activeConversation.messages);
+          }
+        }
+      } else {
+        const oldSavedMessages = localStorage.getItem(OLD_CHAT_STORAGE_KEY);
+
+        if (oldSavedMessages) {
+          const parsedOldMessages = JSON.parse(oldSavedMessages);
+
+          if (Array.isArray(parsedOldMessages) && parsedOldMessages.length > 0) {
+            const migratedChat: Conversation = {
+              id: createChatId(),
+              title: createChatTitle(parsedOldMessages),
+              messages: parsedOldMessages,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+
+            setConversations([migratedChat]);
+            setCurrentChatId(migratedChat.id);
+            setMessages(migratedChat.messages);
+
+            localStorage.setItem(
+              CONVERSATIONS_STORAGE_KEY,
+              JSON.stringify([migratedChat]),
+            );
+
+            localStorage.setItem(CURRENT_CHAT_STORAGE_KEY, migratedChat.id);
+            localStorage.removeItem(OLD_CHAT_STORAGE_KEY);
+          }
+        }
+      }
+
+      if (savedDarkMode !== null) {
+        setDarkMode(JSON.parse(savedDarkMode));
+      }
+
+      if (savedTools) {
+        const parsedTools = JSON.parse(savedTools);
+
+        if (Array.isArray(parsedTools)) {
+          setActiveTools(parsedTools);
+        }
+      }
+    } catch (error) {
+      console.log("Failed to load localStorage data:", error);
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  /**
+   * ------------------------
+   * SAVE CONVERSATIONS TO LOCALSTORAGE
+   * ------------------------
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+
+    localStorage.setItem(
+      CONVERSATIONS_STORAGE_KEY,
+      JSON.stringify(conversations),
+    );
+  }, [conversations, hydrated]);
+
+  /**
+   * ------------------------
+   * SAVE CURRENT CHAT ID TO LOCALSTORAGE
+   * ------------------------
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+
+    if (currentChatId) {
+      localStorage.setItem(CURRENT_CHAT_STORAGE_KEY, currentChatId);
+    } else {
+      localStorage.removeItem(CURRENT_CHAT_STORAGE_KEY);
+    }
+  }, [currentChatId, hydrated]);
+
+  /**
+   * ------------------------
+   * SAVE DARK MODE TO LOCALSTORAGE
+   * ------------------------
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+
+    localStorage.setItem(DARK_MODE_STORAGE_KEY, JSON.stringify(darkMode));
+  }, [darkMode, hydrated]);
+
+  /**
+   * ------------------------
+   * SAVE ACTIVE TOOLS TO LOCALSTORAGE
+   * ------------------------
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+
+    localStorage.setItem(ACTIVE_TOOLS_STORAGE_KEY, JSON.stringify(activeTools));
+  }, [activeTools, hydrated]);
 
   /**
    * ------------------------
@@ -54,6 +232,54 @@ export default function ChatInterface() {
 
   /**
    * ------------------------
+   * SAVE / UPDATE ONE CONVERSATION
+   * ------------------------
+   */
+  const saveConversation = (
+    chatMessages: ChatMessage[],
+    existingChatId?: string | null,
+  ) => {
+    const now = new Date().toISOString();
+
+    let chatId = existingChatId || currentChatId;
+
+    if (!chatId) {
+      chatId = createChatId();
+      setCurrentChatId(chatId);
+    }
+
+    const newConversation: Conversation = {
+      id: chatId,
+      title: createChatTitle(chatMessages),
+      messages: chatMessages,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setConversations((prev) => {
+      const alreadyExists = prev.some((chat) => chat.id === chatId);
+
+      if (alreadyExists) {
+        return prev.map((chat) =>
+          chat.id === chatId
+            ? {
+              ...chat,
+              title: createChatTitle(chatMessages),
+              messages: chatMessages,
+              updatedAt: now,
+            }
+            : chat,
+        );
+      }
+
+      return [newConversation, ...prev];
+    });
+
+    return chatId;
+  };
+
+  /**
+   * ------------------------
    * TOGGLE TOOL
    * ------------------------
    */
@@ -65,13 +291,37 @@ export default function ChatInterface() {
 
   /**
    * ------------------------
+   * NEW CHAT
+   * ------------------------
+   */
+  const startNewChat = () => {
+    setMessages([]);
+    setCurrentChatId(null);
+    setMessage("");
+  };
+
+  /**
+   * ------------------------
+   * OPEN OLD CHAT
+   * ------------------------
+   */
+  const openConversation = (chat: Conversation) => {
+    if (loading) return;
+
+    setCurrentChatId(chat.id);
+    setMessages(chat.messages);
+    setMessage("");
+  };
+
+  /**
+   * ------------------------
    * SEND MESSAGE
    * ------------------------
    */
   const sendMessage = async () => {
     if (!message.trim() || loading) return;
 
-    const userMessage = {
+    const userMessage: ChatMessage = {
       role: "user",
       content: message,
     };
@@ -79,6 +329,8 @@ export default function ChatInterface() {
     const updatedMessages = [...messages, userMessage];
 
     setMessages(updatedMessages);
+
+    const activeChatId = saveConversation(updatedMessages, currentChatId);
 
     setMessage("");
 
@@ -101,25 +353,31 @@ export default function ChatInterface() {
 
       const data = await res.json();
 
-      setMessages([
+      const finalMessages: ChatMessage[] = [
         ...updatedMessages,
 
         {
           role: "assistant",
           content: data.message || "No response",
         },
-      ]);
+      ];
+
+      setMessages(finalMessages);
+      saveConversation(finalMessages, activeChatId);
     } catch (error) {
       console.log(error);
 
-      setMessages([
+      const errorMessages: ChatMessage[] = [
         ...updatedMessages,
 
         {
           role: "assistant",
           content: "Something went wrong.",
         },
-      ]);
+      ];
+
+      setMessages(errorMessages);
+      saveConversation(errorMessages, activeChatId);
     } finally {
       setLoading(false);
     }
@@ -144,7 +402,7 @@ export default function ChatInterface() {
       <aside className="hidden md:flex w-64 flex-col bg-zinc-100 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
         <div className="p-4">
           <button
-            onClick={() => setMessages([])}
+            onClick={startNewChat}
             className="flex w-full items-center justify-between rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
           >
             <div className="flex items-center gap-2">
@@ -159,13 +417,25 @@ export default function ChatInterface() {
             History
           </p>
 
-          <div className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400">
-            <MessageSquare size={16} />
+          {conversations.length === 0 ? (
+            <div className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400">
+              <MessageSquare size={16} />
 
-            <span className="truncate">
-              {messages[0]?.content || "No conversations yet"}
-            </span>
-          </div>
+              <span className="truncate">No conversations yet</span>
+            </div>
+          ) : (
+            conversations.map((chat) => (
+              <div
+                key={chat.id}
+                onClick={() => openConversation(chat)}
+                className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 cursor-pointer text-zinc-600 dark:text-zinc-400"
+              >
+                <MessageSquare size={16} />
+
+                <span className="truncate">{chat.title}</span>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Bottom Sidebar Actions */}
@@ -213,16 +483,14 @@ export default function ChatInterface() {
               {messages.map((msg, i) => (
                 <div
                   key={i}
-                  className={`flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed shadow-sm ${
-                      msg.role === "user"
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed shadow-sm ${msg.role === "user"
                         ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black"
                         : "bg-zinc-200 dark:bg-zinc-800"
-                    }`}
+                      }`}
                   >
                     {msg.content}
                   </div>
@@ -320,11 +588,10 @@ function ToolChip({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-        active
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${active
           ? "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
           : "bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
-      }`}
+        }`}
     >
       {icon}
 

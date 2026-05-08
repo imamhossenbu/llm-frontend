@@ -212,11 +212,9 @@ export default function ChatInterface() {
    * ------------------------
    */
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    if (typeof window === "undefined") return;
+
+    document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
 
   /**
@@ -441,7 +439,7 @@ export default function ChatInterface() {
         {/* Bottom Sidebar Actions */}
         <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
           <button
-            onClick={() => setDarkMode(!darkMode)}
+            onClick={() => setDarkMode((prev) => !prev)}
             className="flex w-full items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
           >
             {darkMode ? <Sun size={16} /> : <Moon size={16} />}
@@ -488,8 +486,8 @@ export default function ChatInterface() {
                 >
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed shadow-sm ${msg.role === "user"
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black"
-                        : "bg-zinc-200 dark:bg-zinc-800"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black"
+                      : "bg-zinc-200 dark:bg-zinc-800"
                       }`}
                   >
                     {msg.content}
@@ -589,8 +587,8 @@ function ToolChip({
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${active
-          ? "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
-          : "bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
+        ? "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
+        : "bg-white border-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500"
         }`}
     >
       {icon}

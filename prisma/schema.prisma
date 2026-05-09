@@ -44,3 +44,13 @@ model Message {
   chatId    String   @db.ObjectId
   chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
 }
+
+model Memory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+
+  userId    String
+  key       String
+  value     String
+
+  createdAt DateTime @default(now())
+}

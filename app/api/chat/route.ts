@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
+import { getUserMemories, saveMemory } from "@/lib/memory";
 
 export async function POST(req: Request) {
   try {
@@ -23,7 +24,12 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const { messages, chatId, model, tools = [] } = body;
+    const {
+      messages,
+      chatId,
+      model = "llama-3.3-70b-versatile",
+      tools = [],
+    } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -39,25 +45,38 @@ export async function POST(req: Request) {
 
     const latestUserMessage = messages[messages.length - 1];
 
-    if (!latestUserMessage) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid message",
-        },
-        {
-          status: 400,
-        },
-      );
+    /**
+     * LOAD MEMORIES
+     */
+
+    const memories = await getUserMemories(user.userId);
+
+    /**
+     * SIMPLE AUTO MEMORY SAVE
+     */
+
+    const content = latestUserMessage.content.toLowerCase();
+
+    if (content.includes("my name is")) {
+      const name = latestUserMessage.content.split("my name is")[1]?.trim();
+
+      if (name) {
+        await saveMemory(user.userId, "name", name);
+      }
     }
 
-    const aiResponse = await runAgent(messages, tools, model);
+    /**
+     * AI RESPONSE
+     */
+
+    const aiResponse = await runAgent(messages, memories, tools, model);
 
     let chat;
 
     /**
      * EXISTING CHAT
      */
+
     if (chatId) {
       chat = await prisma.chat.findFirst({
         where: {
@@ -93,10 +112,10 @@ export async function POST(req: Request) {
         ],
       });
     } else {
+      /**
+       * NEW CHAT
+       */
 
-    /**
-     * NEW CHAT
-     */
       const title = latestUserMessage.content.slice(0, 40) || "New Chat";
 
       chat = await prisma.chat.create({
@@ -122,13 +141,19 @@ export async function POST(req: Request) {
       });
     }
 
+    /**
+     * RETURN UPDATED MESSAGES
+     */
+
     const updatedMessages = await prisma.message.findMany({
       where: {
         chatId: chat.id,
       },
+
       orderBy: {
         createdAt: "asc",
       },
+
       select: {
         role: true,
         content: true,
@@ -137,6 +162,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+
       data: {
         id: chat.id,
         messages: updatedMessages,

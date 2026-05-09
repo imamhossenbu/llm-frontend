@@ -17,12 +17,22 @@ function cleanMessages(messages: any[]) {
 
 export async function runAgent(
   messages: any[],
+  memories: any[] = [],
   tools: string[] = [],
   model = "llama-3.3-70b-versatile",
 ) {
   const sanitizedMessages = cleanMessages(messages);
 
   const webSearchEnabled = tools.includes("tavily_search");
+
+  /**
+   * MEMORY CONTEXT
+   */
+
+  const memoryContext =
+    memories.length > 0
+      ? memories.map((m) => `${m.key}: ${m.value}`).join("\n")
+      : "No saved memories.";
 
   /**
    * FIRST AI CALL
@@ -39,47 +49,21 @@ export async function runAgent(
       {
         role: "system",
 
-        content: webSearchEnabled
-          ? `
+        content: `
 You are a helpful AI assistant.
 
-IMPORTANT RULES:
+USER MEMORIES:
+${memoryContext}
 
-1. If user asks about:
-- weather
-- news
-- live data
-- current information
-- latest updates
-- sports scores
-- stock price
-- internet facts
+IMPORTANT:
 
-Then respond ONLY like this:
-
+- Use memories naturally.
+- If user asks "who am I", "what is my name", etc use memory.
+- Never hallucinate memory.
+- If web search needed return ONLY:
 SEARCH: query
 
-2. Do not explain before SEARCH.
-
-3. If search is unnecessary answer normally.
-
-Examples:
-
-User: weather in dhaka
-Assistant: SEARCH: current weather in dhaka
-
-User: latest iphone news
-Assistant: SEARCH: latest iphone news
-
-User: who is messi
-Assistant: Lionel Messi is a football player.
-`
-          : `
-You are a helpful AI assistant.
-
-Web search disabled.
-
-Never use SEARCH.
+Web Search Enabled: ${webSearchEnabled}
 `,
       },
 
@@ -121,7 +105,7 @@ Never use SEARCH.
 
       temperature: 0,
 
-      max_completion_tokens: 600,
+      max_completion_tokens: 700,
 
       messages: [
         {
@@ -130,7 +114,10 @@ Never use SEARCH.
           content: `
 You are a helpful AI assistant.
 
-Use the search results to answer naturally.
+USER MEMORIES:
+${memoryContext}
+
+Use search results + memories naturally.
 `,
         },
 
@@ -142,9 +129,9 @@ Use the search results to answer naturally.
           content: `
 Search Results:
 
-${searchResult.slice(0, 4000)}
+${searchResult.slice(0, 5000)}
 
-Now answer the user clearly.
+Now answer clearly.
 `,
         },
       ],

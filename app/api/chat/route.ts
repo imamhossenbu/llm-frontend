@@ -4,7 +4,11 @@ import { NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { getUserMemories, saveMemory } from "@/lib/memory";
+import {
+  getUserMemories,
+  extractMemories,
+  upsertMemory,
+} from "@/lib/memory";
 
 export async function POST(req: Request) {
   try {
@@ -52,24 +56,25 @@ export async function POST(req: Request) {
     const memories = await getUserMemories(user.userId);
 
     /**
-     * SIMPLE AUTO MEMORY SAVE
-     */
-
-    const content = latestUserMessage.content.toLowerCase();
-
-    if (content.includes("my name is")) {
-      const name = latestUserMessage.content.split("my name is")[1]?.trim();
-
-      if (name) {
-        await saveMemory(user.userId, "name", name);
-      }
-    }
-
-    /**
      * AI RESPONSE
      */
 
     const aiResponse = await runAgent(messages, memories, tools, model);
+
+    /**
+     * INTELLIGENT AUTO MEMORY EXTRACTION (runs in background after response)
+     * The AI analyzes the conversation and extracts facts worth remembering.
+     */
+
+    extractMemories(latestUserMessage.content, aiResponse)
+      .then(async (newMemories) => {
+        for (const mem of newMemories) {
+          await upsertMemory(user.userId, mem.key, mem.value);
+        }
+      })
+      .catch((err) => {
+        console.error("Background memory save error:", err);
+      });
 
     let chat;
 

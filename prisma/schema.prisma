@@ -54,4 +54,6 @@ model Memory {
   value     String
 
   createdAt DateTime @default(now())
+
+  @@unique([userId, key])
 }
